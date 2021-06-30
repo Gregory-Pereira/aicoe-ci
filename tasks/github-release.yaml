@@ -1,70 +1,53 @@
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: git-add-release-artifacts
+  name: build-go-binaries
 spec:
   params:
-    - default: operate-first
+    # tag params
+    - name: org_name
       description: the git organization title.
-      name: git_organization
-      type: string
-    - default: opfcli
+      default: "operate-first"
+    - name: repo_name
       description: The git repository title.
-      name: git_repository
-      type: string
-    - default: linux-arm linux-arm64 linux-amd64 darwin-amd64
-      description: >-
-        OS strategy with which binaries are built. Inputed as string delineated
-        with spaces, such as "Darwin-amd64 linux-amd64 darwin-amd64" etc.
-      name: build_strategy_OS_x_ARCH
-      type: string
-    - description: The existing or desired tag name.
-      name: git_tag
-      type: string
+      default: "opfcli"
+    - name: build_stratergy_OS_x_ARCH
+      description: OS strategy with which binaries are built.
+      default: ["linux-arm", "linux-arm64", "linux-amd64", "darwin-amd64"]
+      type: list
+    - name: GITHUB_TOKEN
+      description: Github token for bot access to the repository.
+    - name: git_release_name
+      description: The desired name of the release.
+    - name: git_tag_name
+      description: The existing or desired tag name.
+
+  resources:
+    inputs:
+      - name: repo
+        type: git
+
   steps:
-    - image: 'quay.io/larsks/opf-go-precommit:latest'
-      name: binary-builds
-      resources: {}
-      script: |
-        cd opfcli;
-        mkdir binaries
-        for build in $(params.build_strategy_OS_x_ARCH); do
-          export GOARCH="$(echo $build | cut -d '-' -f2)"
-          export GOOS="$(echo $build | cut -d '-' -f1)"
-          env | grep GO;
-          make
-          ls -al;
-          mv opfcli-$build ./binaries;
-        done
-      workingDir: /workspace/
-    - image: 'quay.io/thoth-station/s2i-thoth-ubi8-py36:latest'
-      name: push-artifacts
-      resources: {}
-      script: >
-        #!/usr/libexec/platform-python
-        import requests
-        import os
-        import json
-        binaries_base_path="/workspace/repo/binaries";
-        binaries=os.listdir("/workspace/repo/binaries");
-        release=requests.get('https://api.github.com/repos/$(params.git_organization)/$(params.git_repository)/releases/tags/$(params.git_tag)').json();
-        release_url  = release.url
-        release_id_index  =  release_info.index("releases/") + 9;
-        release_id = release_url[(len(release_url)-release_id_index):];
-        upload_url = release.upload_url
-        values={}
-        headers = {'Authorization': 'token {os.getenv("GITHUBTOKEN")}'}
-        for binary in binaries:
-          values['name'] = binary
-          files={'upload_file': open(f'{binaries_base_path}/{binary}', 'rb'), 'name': f'{binary}'}
-          content_length = os.path.getsize(f'{binaries_base_path}/{binary}')
-          headers = {'Content-Type': 'multipart/form-data', 'Content-Length': f'{content_length}'}
-          requests.post("https://uploads.github.com/repos/$(params.git_organization)/$(params.git_repository)/releases/{release_id}/assets/", headers=headers, files=files, values=values);
-          print(response.json()); # print the output of json request to confirm binaries were uploaded
-      env:
-        - name: GITHUBTOKEN
-          valueFrom:
-            secretKeyRef:
-              key: token
-              name: auth-secret
+    - name: binary-builds
       workingDir: /workspace/repo
+      securityContext:
+        privileged: true
+      runAfter: 
+        - git-check-release
+      script: |
+      #!/usr/bin/bash
+      #declare -a build_stratergy_OS_x_ARCH=("linux-amd64" "Darwin-amd64" "Linux-arm" "linux-amd");
+      for build in "$(params.build_stratergy_OS_x_ARCH)[@]}";
+      do
+        GOARCH="$(echo $params.build_stratergy_OS_x_ARCH | cut -d '-' -f2)"
+        GOOS="${params.build_stratergy_OS_x_ARCH%%-*}" 
+        make;
+      done;
+    - volumeMounts:
+        - mountPath: /workspace/repo/binaries
+          name: binaries
+
+    - name: push
+      uses: 
+        with:
+          path: /workspace/repo/binaries
