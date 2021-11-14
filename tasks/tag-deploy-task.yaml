@@ -27,10 +27,17 @@ spec:
     - name: deploy_image_name
       description: Deployment imagestream name to be used by the application.
       default: ""
-    - name: overlay_contextpath
+    - name: init_overlay_contextpath
       type: string
-      description: imagestreamtag yaml which is to be updated.
+      description: imagestreamtag yaml which is to be updated, coming from the init-task.
       default: ""
+    - name: pr_config_overlay_contextpath
+      type: string
+      description: imagestreamtag yaml which is to be updated, coming from the pr-config task.
+      default: ""
+    - name: overlay_name
+      type: string
+      description: the overlay name to deploy (if one exists).
   resources:
     inputs:
       - name: s2i-thoth
@@ -57,10 +64,14 @@ spec:
       else
         registry_repo=$(params.registry_project)
       fi
-      if [ -z "$(params.overlay_contextpath)" ]; then
-        contextpath=$(params.repo_name)/overlays/test/imagestreamtag.yaml
+      if [ -z "$(params.init_overlay_contextpath)" ]; then
+        if [ -z "$(params.pr_config_overlay_contextpath)" ]; then
+          contextpath=$(params.repo_name)/overlays/test/imagestreamtag.yaml
+        else 
+          contextpath=$(pr_config_overlay_contextpath)/overlays/test/imagestreamtag.yaml
       else
-        contextpath=$(params.overlay_contextpath)
+        contextpath=$(params.init_overlay_contextpath)/overlays/test/imagestreamtag.yaml
+        registry_repo=$(params.overlay_name)
       fi
       if [ ! -z "$(params.deploy_image_name)" ]; then
         docs=$(yq r -d'*' $contextpath metadata.name)
