@@ -69,6 +69,8 @@ spec:
       params:
         - name: pr_number
           value: $(params.pr_number)
+        - name: overlay_name
+          value: $(tasks.init-task-run.results.overlay_name)
       resources:
         inputs:
           - name: repo
@@ -372,7 +374,7 @@ spec:
         - name: pr_repo
           value: $(params.pr_repo)
         - name: overlay_name
-          value: $(tasks.init-task.results.overlay_name)
+          value: $(tasks.init-task-run.results.overlay_name)
         - name: base_image
           value: $(tasks.pr-configuration.results.base-image)
         - name: build_stratergy
@@ -389,6 +391,8 @@ spec:
           value: $(tasks.pr-configuration.results.registry-project)
         - name: registry_secret
           value: $(tasks.pr-configuration.results.registry-secret)
+        - name: multiple_overlays
+          value: $(tasks.pr-configuration.results.multiple-overlays)
       resources:
         inputs:
           - name: s2i-thoth
@@ -423,9 +427,9 @@ spec:
         - name: deploy_image_name
           value: $(tasks.pr-configuration.results.deploy-image-name)
         - name: init_overlay_contextpath
-          value: $(tasks.init-task.results.overlay-contextpath)
+          value: $(tasks.init-task-run.results.overlay_contextpath)
         - name: overlay_name
-          value: $(tasks.init-task.results.overlay_name)
+          value: $(tasks.init-task-run.results.overlay_name)
         - name: pr_config_overlay_contextpath
           value: $(tasks.pr-configuration.results.overlay-contextpath)
       resources:
