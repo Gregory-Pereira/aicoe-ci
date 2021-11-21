@@ -368,6 +368,8 @@ spec:
           resources:
             - name: ubi
               resource: ubi
+            - name: pr
+              resource: pr-source
       params:
         - name: pr_number
           value: $(params.pr_number)
@@ -391,8 +393,6 @@ spec:
           value: $(tasks.pr-configuration.results.registry-project)
         - name: registry_secret
           value: $(tasks.pr-configuration.results.registry-secret)
-        - name: multiple_overlays
-          value: $(tasks.pr-configuration.results.multiple-overlays)
       resources:
         inputs:
           - name: s2i-thoth
@@ -401,8 +401,6 @@ spec:
             resource: git-repo
           - name: pr
             resource: pr-source
-        outputs:
-          - name: overlay_name
       runAfter:
         - init-task-run
 

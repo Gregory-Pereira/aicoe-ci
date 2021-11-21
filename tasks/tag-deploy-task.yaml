@@ -50,37 +50,46 @@ spec:
       privileged: true
     script: |
       export GIT_SSH_COMMAND='ssh -i /tekton/home/.ssh/id_rsa -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
-      git clone git@github.com:$(params.deploy_project_org)/$(params.deploy_project_name) /workspace/configrepo
+      git clone git@github.com:$(params.deploy_project_org)/$(params.deploy_project_name) /workspace/repo
     volumeMounts:
       - name: ssh-config
         mountPath: /tekton/home/.ssh
 
   - name: patch-imagetag
     image: quay.io/harshad16/yq:latest
-    workingDir: /workspace/configrepo
+    workingDir: /workspace/repo
     script: |
-      if [ -z "$(params.registry_project)" ]; then
+
+      if [ -z "$(params.registry_project)" ];then
         registry_repo=$(params.repo_name)
       else
         registry_repo=$(params.registry_project)
       fi
-      if [ -z "$(params.init_overlay_contextpath)" ]; then
-        if [ -z "$(params.pr_config_overlay_contextpath)" ]; then
-          contextpath=$(params.repo_name)/overlays/test/imagestreamtag.yaml
+
+      if [ -z "$(params.init_overlay_contextpath)" ];then
+        if [ -z "$(params.pr_config_overlay_contextpath)" ];then
+          contextpath=$(params.repo_name)/manifests/overlays/$(params.overlay_name)/imagestreamtag.yaml
         else 
-          contextpath=$(pr_config_overlay_contextpath)/overlays/test/imagestreamtag.yaml
+          contextpath=$(pr_config_overlay_contextpath)
+        fi
       else
-        contextpath=$(params.init_overlay_contextpath)/overlays/test/imagestreamtag.yaml
+        contextpath=$(params.init_overlay_contextpath)/imagestreamtag.yaml
         registry_repo=$(params.overlay_name)
       fi
-      if [ ! -z "$(params.deploy_image_name)" ]; then
+
+      ls -a .
+      ls -a /workspace/repo/
+      ls -a /workspace/repo/manifests/
+      ls -a $(params.init_overlay_contextpath)
+
+      if [ ! -z "$(params.deploy_image_name)" ];then
         docs=$(yq r -d'*' $contextpath metadata.name)
         cnt=0
         for doc in $docs; do
-          if [ "$doc" != "$(params.deploy_image_name)" ]; then
-             let cnt+=1
+          if [ "$doc" != "$(params.deploy_image_name)" ];then
+            let cnt+=1
           else
-             break
+            break
           fi
         done
         echo "{\"spec\":{\"tags\":[{\"name\":\"latest\",\"from\":{\"kind\":\"DockerImage\",\"name\":\"$(params.registry)/$(params.registry_org)/$registry_repo:$(params.git_ref)\"},\"importPolicy\":{},\"referencePolicy\":{\"type\":\"Source\"}}]}}" | yq -P m -d"$cnt" -i -x $contextpath -
@@ -92,7 +101,7 @@ spec:
     image: $(resources.inputs.s2i-thoth.url)
     securityContext:
       privileged: true
-    workingDir: /workspace/configrepo
+    workingDir: /workspace/repo
     env:
       - name: GITHUB_USERNAME
         valueFrom:

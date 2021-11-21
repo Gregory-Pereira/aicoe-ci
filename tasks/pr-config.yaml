@@ -122,6 +122,18 @@ spec:
                             else:
                                 output.write(overlay["build"].get(ele))
                             output.close()
+                    for ele in overlay.get("deploy", {}):
+                        if ele == "overlay-contextpath":
+                            write_to_file(f"/tekton/results/{ele}", overlay["deploy"], ele)
+                        else:
+                            output = open(f"/tekton/results/deploy-{ele}", "w+")
+                            if ele == "project-name" and not overlay["deploy"].get(ele):
+                                output.write("thoth-application")
+                            elif ele == "project-org" and not overlay["deploy"].get(ele):
+                                output.write("thoth-station")
+                            else:
+                                output.write(overlay["deploy"].get(ele))
+                            output.close()
         for ele in conf.get("build", []):
             if isinstance(conf["build"].get(ele), str):
                 if ele == "build-strategy":
@@ -157,7 +169,5 @@ spec:
       image: $(resources.inputs.s2i-thoth.url)
       workingDir: /workspace/repo
       script: |
-        for i in $(ls -la /tekton/results/)
-          echo $i
-        done
+        ls -la /tekton/results/
 

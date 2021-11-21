@@ -11,6 +11,8 @@ spec:
   resources:
     - name: ubi
       type: image
+    - name: pr
+      type: pullRequest
   check:
     image: $(resources.inputs.ubi.url)
     securityContext:

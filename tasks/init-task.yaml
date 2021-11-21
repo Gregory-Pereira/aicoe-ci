@@ -28,9 +28,9 @@ spec:
         type: image
       - name: repo
         type: git
-    outputs:
-      - name: overlay_name
-      - name: overlay_contextpath
+  results:
+    - name: overlay_name
+    - name: overlay_contextpath
 
   steps:
     - name: init-ops
@@ -83,7 +83,7 @@ spec:
                 print("GitHub comment has been added.")
 
 
-        received_comment = """$(params.pr_comment)"""
+        received_comment = "$(params.pr_comment)"
         received_comment = received_comment.strip().lower()
         author = "$(params.pr_comment_author)"
         author_association = "$(params.pr_comment_author_association)"
@@ -97,20 +97,26 @@ spec:
             var_overlay_name = received_comment[8:]
             output_file = open("/tekton/results/overlay_name", "w+")
             json.dump(var_overlay_name, output_file)
-            overlay_found = false
-            for root, dirs, files in os.walk("/workspace/repo"):
+            overlay_found = "false"
+            for root, dirs, files in os.walk("/workspace/repo/manifests/"):
                 for name in dirs:
                     if name == var_overlay_name:
-                        output_file = open("tekton/results/overlay_contextpath", "w+")
-                        json.dump(os.path.join(root, name), output_file)
-                        overlay_found = true
-            if var_overlay_name != "" and overlay_found == false:
-              if "return_comment" in locals():
-                return_comment += f"\nAdditionally, no overlay for name {var_overlay_name} found."
-              else:
-                return_comment = f"No overlay for name {var_overlay_name} found."
+                        output_file = open("/tekton/results/overlay_contextpath", "w+")
+                        json.dump(root + "/" + var_overlay_name, output_file)
+                        overlay_found = "true"
+            if var_overlay_name != "" and overlay_found == "false":
+                if "return_comment" in locals():
+                    return_comment += f"\nAdditionally, no overlay for name {var_overlay_name} found."
+                else:
+                    return_comment = f"No overlay for name {var_overlay_name} found."
         if return_comment:
             post_comment(return_comment)
+
+    - name: check-results
+      image: $(resources.inputs.s2i-thoth.url)
+      workingDir: /workspace/repo
+      script: |
+        ls -la /tekton/results/
 
     - name: oc-create-image
       image: quay.io/openshift/origin-cli:latest
