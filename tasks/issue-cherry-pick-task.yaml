@@ -1,0 +1,120 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: cherry-pick-task
+  labels:
+    app: aicoe-ci
+spec:
+  description: >-
+    This task is primarily meant for use in `operate-first/odh-manifests`, but can be used with any repository. It is a task meant to create a new branch on a git repository, based on a tagged release of its upstream counterpart. It then compares to other branches based on a similarly tagged version of the upstream repo, and cherry-picks those commits onto the new branch.
+
+    As discussed this is primarily meant for use in `operate-first/odh-manifests`, where there are multiple `master`-like branches based on a combination of the cluster to deploy the changes to, and the tagged version of `opendatahub/odh-manifests`. To see an example, checkout the repostiory: https://github.com/operate-first/odh-manifests. Note that this only currently works when an existing branch has been created with a similar tagged version of the upstream repository. This means that an operate-first contributor must first create at least one branch based on an upgraded $odh_version, where `operate-first` commits have been cherry-picked onto said branch (for any cluster).
+  params:
+    - name: cluster
+      description: The name of the cluster to which a new tagged version of ODH will be deployed.
+      type: string
+    - name: odh_version
+      description: The tag of `opendatahub/odh-manifests` that will be used as the base of the new branch.
+      type: string
+    - name: origin_git_org_name
+      description: The name of the `origin` repository to use when rebasing
+      default: operate-first
+      type: string
+    - name: origin_git_repo_name
+      description: The repository in organization $orgin_git_org_name that will be used
+      default: odh-manifests
+      type: string
+    - name: upstream_git_org_name
+      description:  The organization that owns the upstream repo $origin_git_repo_name.
+      default: opendatahub
+      type: string
+    - name: upstream_git_repo_name
+      description: The name of the repository that $origin_git_repo_name was forked from. Usually this value is the same as $origin_git_repo_name but forks can change their name compared to upstream.
+      default: odh-manifests
+      type: string
+  steps:
+    - name: git-init-and-create-branch-op
+      image: alpine/git
+      securityContext:
+        privileged: true
+      script: |
+        set +ex
+        mkdir -p /workspace/repo && cd /workspace/repo
+
+        git clone git@github.com:$(params.origin_git_org_name)/$(params.origin_git_repo_name).git
+        cd $(params.origin_git_repo_name)
+        git remote add upstream git@github.com:$(params.upstream_git_org_name)/$(params.upstream_git_repo_name).git
+
+        git fetch upstream --tags -f 1&2>/dev/null
+        tags="$(git tag)"
+        tag_validated=false
+        readarray -t tags_array <<<"$tags"
+
+        for tag in "${tags_array[@]}"
+        do
+            if [[ $tag == $(params.odh_version) ]]; then
+                echo "Successfully verified tag $tag in upstream: $(params.origin_git_org_name)/$(params.origin_git_repo_name). Creating branch and proceeding."
+                git checkout -b $(params.cluster)-$(params.odh_version) tags/$(params.odh_version)
+                exit 0
+            fi
+        done
+
+        echo "Cannot verify tag $odh_version in upstream ($upstream_git_org_name/$upstream_git_repo_name). Exiting."
+        exit 1
+      volumeMounts:
+      - name: ssh-config
+        mountPath: /tekton/home/.ssh
+    - name: compare-and-cherry-pick
+      image: alpine/git
+      workingDir: /workspace/repo/$(params.origin_git_repo_name)
+      script: |
+        set +ex
+
+        git checkout $(params.cluster)-$(params.odh_version)
+
+        branches=$(git branch -r)
+        readarray -t branches_array <<<"$branches"
+        for branch in "${branches_array[@]}"
+        do
+          if [[ $branch == "origin/"*"$(params.odh_version)" ]]; then
+            example_branch=$branch
+          fi
+        done
+
+        if [[ -z "$example_branch" ]]; then
+          echo "No branch exists in origin that contains upstream tag $tag in it."
+          exit 1
+        fi
+
+        extra_commits=$(git log --no-merges $example_branch "^$(params.cluster)-$(params.odh_version)")
+        extra_commit_shas_array=()
+
+        # parse out git-shas
+        git_sha_regex="[0-9a-f]{5,40}"
+        for commit_word in $extra_commits; do
+          [[ $commit_word =~ $git_sha_regex ]]
+          if [[ ${BASH_REMATCH[0]} ]]; then
+            extra_commit_shas_array+=("${BASH_REMATCH[0]}")
+          fi
+        done
+
+        #reverse array for commit order. CURRENTLY DOES NOT WORK
+        startPointer=0
+        endPointer=$((${#extra_commit_shas_array[@]}-1))
+
+
+        while [[ startPointer -lt endPointer ]]
+        do
+            temp="${extra_commit_shas_array[$endPointer]}"
+            extra_commit_shas_array[$endPointer]="${extra_commit_shas_array[$startPointer]}"
+            extra_commit_shas_array[$startPointer]="$temp"
+            ((startPointer++, endPointer--))
+        done
+
+        for commit_sha in $extra_commit_shas_array; do
+          git cherry-pick $commit_sha --strategy-option theirs
+        done
+
+        # check if multiple commits have been created
+        # if they have make sure last one is a merge (these two lines 118-119 comments only refer to if merge was not cherry-picked / cant be. if that is the case then will need to manually stop when it sees the merge)
+
