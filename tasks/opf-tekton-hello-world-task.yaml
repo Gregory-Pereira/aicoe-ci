@@ -1,0 +1,23 @@
+apiVersion: tekton.dev/v1alpha1
+kind: Task
+metadata:
+  name: opf-tekton-hello-world-task
+spec:
+  inputs:
+    resources:
+    - name: testing
+      type: git
+    params:
+    - name: VERSION
+      description: version string for images being built
+      default: ""
+    - name: TAGS
+      description: image tags to push
+      default: ""
+  steps:
+  - name: cowsay
+    image: quay.io/mprpic/cowsay-container:latest
+    workingDir: /
+    command: ["/bin/cowsay"]
+    args:
+    - "PRVERSION: $(params.VERSION) | PRTAGS: $(params.TAGS)"
